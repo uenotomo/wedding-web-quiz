@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>クイズ参加</title>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-image: url("/static/img/th-1.webp");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: white;
+            font-family: sans-serif;
+            text-align: center;
+        }
+
+        /* ▼ 名前入力エリアを大きく見やすく ▼ */
+        #name_area {
+            margin-top: 150px;
+            font-size: 42px;
+        }
+
+        #name_area input {
+            width: 70%;
+            padding: 25px;
+            font-size: 36px;
+            border-radius: 20px;
+            border: 3px solid #0ff;
+            text-align: center;
+            background: rgba(0,0,0,0.5);
+            color: white;
+        }
+
+        #name_area button {
+            margin-top: 40px;
+            padding: 25px 60px;
+            font-size: 36px;
+            border-radius: 20px;
+            background: #0aa;
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 0 15px #0ff;
+        }
+
+        #name_area button:hover {
+            background: #0cc;
+        }
+        /* ▲ 名前入力エリアここまで ▲ */
+
+        #name_area, #wait_area, #quiz_area, #answer_result {
+            margin-top: 60px;
+        }
+
+        /* ▼ 質問文を大きく ▼ */
+        #question {
+            font-size: 52px;
+            font-weight: bold;
+            margin-top: 40px;
+            text-shadow: 0 0 10px #000;
+        }
+
+        /* ▼ 選択肢の枠を広く ▼ */
+        #choices_grid {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            width: 90%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* ▼ 選択肢ボタンを大きく ▼ */
+        .choice_btn {
+            padding: 35px;
+            font-size: 40px;
+            background: rgba(0,0,0,0.6);
+            border: 4px solid #0ff;
+            border-radius: 20px;
+            cursor: pointer;
+            color: white;
+            box-shadow: 0 0 15px #0ff;
+        }
+
+        .choice_btn:hover {
+            background: rgba(0,50,50,0.8);
+        }
+
+        .choice_btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        /* ▼ 回答結果の文字も大きく ▼ */
+        #correct_answer {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        #your_result {
+            font-size: 40px;
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <!-- 名前入力 -->
+    <div id="name_area">
+        <h2>名前を入力してください</h2>
+        <input id="name"><br><br>
+        <button onclick="registerName()">登録</button>
+    </div>
+
+    <!-- 待機画面 -->
+    <div id="wait_area" style="display:none;">
+        <h2>司会者が問題を出すまでお待ちください</h2>
+    </div>
+
+    <!-- 問題表示 -->
+    <div id="quiz_area" style="display:none;">
+        <h2 id="question"></h2>
+        <div id="choices"></div>
+    </div>
+
+    <!-- 回答結果 -->
+    <div id="answer_result" style="display:none; margin-top:30px;">
+        <h2 id="correct_answer"></h2>
+        <h3 id="your_result"></h3>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
+    <script>
+        // クラウドでは現在のホストにそのまま接続する
+        const socket = io({
+            transports: ["polling"]
+        });
+
+        let username = "";
+        let questionActive = false;
+        let latestCorrectChoice = null;
+
+        function registerName(){
+            username = document.getElementById("name").value;
+
+            if(username === ""){
+                alert("名前を入力してください");
+                return;
+            }
+
+            alert("登録しました：" + username);
+
+            document.getElementById("name_area").style.display = "none";
+            document.getElementById("wait_area").style.display = "block";
+        }
+
+        function sendAnswer(choice){
+            socket.emit("answer", {name: username, choice: choice});
+            disableChoices();
+        }
+
+        function disableChoices(){
+            const buttons = document.querySelectorAll("#choices button");
+            buttons.forEach(btn => btn.disabled = true);
+        }
+
+        socket.on("show_stage", data => {
+
+            document.getElementById("quiz_area").style.display = "none";
+            document.getElementById("answer_result").style.display = "none";
+
+            const waitArea = document.getElementById("wait_area");
+            const waitTitle = waitArea.querySelector("h2");
+
+            if(data.stage === 1){
+                waitTitle.innerHTML = `
+                    <p>ちゃんと聞いてたか問題</p>
+                    <p>1. 早押しクイズです</p>
+                    <p>2. 正解するとポイントが入ります</p>
+                    <p>3. 最後に総合ランキングを発表します</p>
+                `;
+            }
+            else if(data.stage === 2){
+                waitTitle.innerHTML = `
+                    <p>練習問題</p>
+                    <p>これから練習問題を1問出します。</p>
+                `;
+            }
+            else if(data.stage === 4){
+                waitTitle.innerHTML = `
+                    <p>本問題</p>
+                    <p>ここから本番5問が始まります。</p>
+                `;
+            }
+            else{
+                waitTitle.innerHTML = `司会者が問題を出すまでお待ちください`;
+            }
+
+            waitArea.style.display = "block";
+        });
+
+        socket.on("show_question", data => {
+            questionActive = true;
+
+            document.getElementById("wait_area").style.display = "none";
+            document.getElementById("quiz_area").style.display = "block";
+            document.getElementById("answer_result").style.display = "none";
+
+            document.getElementById("question").innerText = data.text;
+
+            let html = "<div id='choices_grid'>";
+            for (const key in data.choices){
+                html += `<button class="choice_btn" onclick="sendAnswer('${key}')">${key}: ${data.choices[key]}</button>`;
+            }
+            html += "</div>";
+            document.getElementById("choices").innerHTML = html;
+        });
+
+        socket.on("correct_choice", data => {
+            latestCorrectChoice = data.correct_choice;
+        });
+
+        socket.on("ranking", list => {
+            if (!questionActive) return;
+
+            document.getElementById("correct_answer").innerText =
+                "正解は：" + latestCorrectChoice;
+
+            const me = list.find(a => a.name === username);
+
+            if (me) {
+                document.getElementById("your_result").innerText = "あなたは聞いていました！";
+            } else {
+                document.getElementById("your_result").innerText = "不正解です！聞いてましたか?";
+            }
+
+            document.getElementById("answer_result").style.display = "block";
+
+            questionActive = false;
+        });
+
+    </script>
+
+</body>
+</html>
+
